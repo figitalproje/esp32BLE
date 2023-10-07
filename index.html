@@ -17,6 +17,9 @@
     
     <textarea id="messageToSign" rows="2" cols="40" placeholder="Orjinallik ispatı için text girin "></textarea><br>
     <button onclick="Challenge()">Challenge</button>
+    <button onclick="connectToBLEDevice()">BLE</button>
+    <button onclick="sendDataToBLE()">İmzala</button>
+    <button onclick="onayla()">Onayla</button>
     <br><p id="ConnectionDisplay"></p>
     <br><p id="publicKeyDisplay"></p>
     <p id="publicKeyDisplay2"></p>
@@ -167,7 +170,67 @@ async function Challenge(){
     document.getElementById('aciklama').innerText = 'Açıklama/METADATA: ' + TokenUri;
 }
       
-      
+let bleDevice;
+let bleServer;
+let bleService;
+let bleCharacteristic;
+
+async function connectToBLEDevice() {
+    try {
+        // BLE cihazını keşfet ve bağlan
+        bleDevice = await navigator.bluetooth.requestDevice({
+            filters: [{name: 'ESP32'}],
+            optionalServices: ['2b5dc6e0-2727-453f-b69d-7fa0f50c7705']
+        });
+
+        // GATT sunucusuna bağlan
+        bleServer = await bleDevice.gatt.connect();
+
+        // Servise bağlan
+        bleService = await bleServer.getPrimaryService('2b5dc6e0-2727-453f-b69d-7fa0f50c7705');
+
+        // Özelliğe bağlan
+        bleCharacteristic = await bleService.getCharacteristic('0abd0e1d-b033-486d-bd6f-a9423c091146');
+
+        // Özellikten veri oku
+        const value = await bleCharacteristic.readValue();
+        const data = new TextDecoder().decode(value);
+        console.log('Received:', data);
+        document.getElementById('publicKeyDisplay2').innerText=data;
+    } catch (error) {
+        console.error('BLE connection error:', error);
+    }
+}
+
+// Özellik üzerinden veri gönder
+async function sendDataToBLE() {
+    let inputText = document.getElementById("messageToSign").value;
+    bleCharacteristic = await bleService.getCharacteristic('c029a5f5-03fe-40ff-a379-896dfa677240');
+        const dataBuffer = new TextEncoder().encode(inputText);
+        await bleCharacteristic.writeValue(dataBuffer);
+        await sleep(2000);
+       const value= await bleCharacteristic.readValue();
+       const data = new TextDecoder().decode(value);
+        console.log('Received:', data);
+        document.getElementById('signatureOutput').innerText=data;
+
+    
+}
+async function onayla(){
+    var publicKey8=hexToUint8Array( document.getElementById('publicKeyDisplay2').innerText);
+    
+    var message=  document.getElementById('messageToSign').value.toString();
+    var messageUint8Array = new Uint8Array(message.length);
+        for (var i = 0; i < message.length; i++) {
+         messageUint8Array[i] = message.charCodeAt(i);
+            }
+            var signature8=hexToUint8Array(document.getElementById('signatureOutput').innerText);
+            await sleep(1000);
+            var isValid = nacl.sign.detached.verify(messageUint8Array, signature8, publicKey8);
+            document.getElementById('signatureCheck').innerText =isValid ? "İmza Geçerli = Mühür Orjinal" : "Invalid signature!";
+
+}
+    
 
 
 
